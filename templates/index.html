@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Asterisk Audio Uploader</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        .file-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .container {
+            max-width: 1200px;
+        }
+        .file-card {
+            transition: all 0.2s ease;
+        }
+        .file-card:hover {
+            background-color: #f8f9fa;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <i class="bi bi-soundwave"></i> Asterisk Audio Uploader
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Inicio</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/config">Configuración SSH</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" id="testFFmpeg">Probar FFmpeg</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container py-4">
+        <!-- Mensajes Flash -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="card-title mb-0">
+                            <i class="bi bi-upload"></i> Subir Archivo de Audio
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <form method="post" enctype="multipart/form-data">
+                            {{ form.hidden_tag() }}
+                            
+                            <!-- Campos ocultos para la configuración SSH -->
+                            <input type="hidden" name="ssh_host" value="{{ ssh_config.ssh_host }}">
+                            <input type="hidden" name="ssh_port" value="{{ ssh_config.ssh_port }}">
+                            <input type="hidden" name="ssh_username" value="{{ ssh_config.ssh_username }}">
+                            <input type="hidden" name="ssh_password" value="{{ ssh_config.ssh_password }}">
+                            <input type="hidden" name="remote_dir" value="{{ ssh_config.remote_audio_dir }}">
+                            
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="audio_file" class="form-label">{{ form.audio_file.label }}</label>
+                                        {{ form.audio_file(class="form-control", id="audio_file") }}
+                                        {% if form.audio_file.errors %}
+                                            <div class="invalid-feedback d-block">
+                                                {% for error in form.audio_file.errors %}
+                                                    {{ error }}
+                                                {% endfor %}
+                                            </div>
+                                        {% endif %}
+                                        <div class="form-text">Formatos permitidos: .wav, .mp3, .ogg, .m4a</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="new_filename" class="form-label">{{ form.new_filename.label }}</label>
+                                        {{ form.new_filename(class="form-control", id="new_filename") }}
+                                        {% if form.new_filename.errors %}
+                                            <div class="invalid-feedback d-block">
+                                                {% for error in form.new_filename.errors %}
+                                                    {{ error }}
+                                                {% endfor %}
+                                            </div>
+                                        {% endif %}
+                                        <div class="form-text">Este será el nombre del archivo GSM en Asterisk</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <span class="badge rounded-pill bg-info">
+                                        <i class="bi bi-server"></i> Servidor: {{ ssh_config.ssh_host }}
+                                    </span>
+                                    <span class="badge rounded-pill bg-info">
+                                        <i class="bi bi-person"></i> Usuario: {{ ssh_config.ssh_username }}
+                                    </span>
+                                    <span class="badge rounded-pill bg-info">
+                                        <i class="bi bi-folder"></i> Directorio: {{ ssh_config.remote_audio_dir }}
+                                    </span>
+                                </div>
+                                {{ form.submit(class="btn btn-primary") }}
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Archivos Locales -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="card-title mb-0">
+                            <i class="bi bi-hdd"></i> Archivos Locales
+                        </h5>
+                    </div>
+                    <div class="card-body file-list">
+                        {% if local_files %}
+                            <div class="list-group">
+                                {% for file in local_files %}
+                                    <div class="list-group-item list-group-item-action file-card">
+                                        <div class="d-flex w-100 justify-content-between">
+                                            <h6 class="mb-1">{{ file.name }}</h6>
+                                            <small>{{ (file.size / 1024)|round(1) }} KB</small>
+                                        </div>
+                                        <small class="text-muted">{{ file.date }}</small>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <div class="alert alert-info">
+                                No hay archivos de audio en el directorio local.
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Archivos Remotos -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="card-title mb-0">
+                            <i class="bi bi-cloud"></i> Archivos en Servidor Asterisk
+                        </h5>
+                    </div>
+                    <div class="card-body file-list">
+                        {% if remote_files %}
+                            <div class="list-group">
+                                {% for file in remote_files %}
+                                    <div class="list-group-item list-group-item-action file-card">
+                                        <div class="d-flex w-100 justify-content-between">
+                                            <h6 class="mb-1">{{ file.name }}</h6>
+                                            <small>{{ file.size }} bytes</small>
+                                        </div>
+                                        <small class="text-muted">{{ file.date }} - {{ file.permissions }}</small>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% elif ssh_config.ssh_password %}
+                            <div class="alert alert-info">
+                                No hay archivos GSM en el directorio remoto.
+                            </div>
+                        {% else %}
+                            <div class="alert alert-warning">
+                                <i class="bi bi-exclamation-triangle"></i> 
+                                Configure los datos SSH para ver los archivos del servidor.
+                                <a href="/config" class="btn btn-sm btn-warning mt-2">Configurar SSH</a>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="bg-dark text-white text-center py-3 mt-4">
+        <div class="container">
+            <p class="mb-0">Asterisk Audio Uploader &copy; 2025</p>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.getElementById('testFFmpeg').addEventListener('click', function(e) {
+            e.preventDefault();
+            fetch('/test_ffmpeg')
+                .then(response => response.json())
+                .then(data => {
+                    let alertClass = data.status === 'ok' ? 'success' : 'danger';
+                    let alertHtml = `
+                        <div class="alert alert-${alertClass} alert-dismissible fade show" role="alert">
+                            ${data.message}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    `;
+                    document.querySelector('.container.py-4').insertAdjacentHTML('afterbegin', alertHtml);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+        });
+
+        // Auto-rellenar el nombre del archivo basado en el archivo seleccionado
+        document.getElementById('audio_file').addEventListener('change', function() {
+            let filename = this.files[0]?.name || '';
+            if (filename) {
+                // Eliminar extensión y caracteres especiales
+                filename = filename.replace(/\.[^/.]+$/, ""); // Eliminar extensión
+                filename = filename.replace(/[^a-zA-Z0-9_]/g, "_"); // Reemplazar caracteres especiales
+                document.getElementById('new_filename').value = filename;
+            }
+        });
+    </script>
+</body>
+</html>
